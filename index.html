@@ -1,0 +1,402 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Apple StandBy Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --apple-red: #ff3b30;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #fff;
+            font-family: 'Inter', -apple-system, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+            touch-action: none;
+        }
+
+        /* Landscape Hinweis */
+        @media (orientation: portrait) {
+            .portrait-warning {
+                display: flex;
+                position: fixed;
+                inset: 0;
+                background: #000;
+                z-index: 999;
+                justify-content: center;
+                align-items: center;
+                text-align: center;
+                padding: 20px;
+            }
+        }
+        .portrait-warning { display: none; }
+
+        /* StandBy Widgets Layout */
+        .widget-container {
+            display: flex;
+            width: 95vw;
+            max-width: 1200px;
+            gap: 20px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .widget {
+            background: #1c1c1e;
+            border-radius: 35px;
+            flex: 1;
+            aspect-ratio: 1/1;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+        }
+
+        .clock-text {
+            font-size: clamp(60px, 12vw, 120px);
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -4px;
+        }
+
+        /* DVD Modus */
+        #dvd-container {
+            position: absolute;
+            inset: 0;
+            display: none;
+        }
+
+        /* Das Logo-Element für beide Modi */
+        .bouncing-logo {
+            position: absolute;
+            width: 20vw;
+            height: 20vw;
+            max-width: 250px;
+            max-height: 250px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        #dvd-logo-svg {
+            width: 100%;
+            height: auto;
+            fill: #fff;
+        }
+
+        /* Invert Clock Modus */
+        #invert-mode {
+            display: none;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .giant-clock {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 30vw;
+            font-weight: 900;
+            color: #fff;
+            z-index: 5;
+            white-space: nowrap;
+            letter-spacing: -10px;
+            pointer-events: none;
+        }
+
+        /* UI Elemente */
+        #corner-counter, #upload-trigger {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 15px;
+            font-weight: 600;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            transition: opacity 0.3s, transform 0.2s;
+        }
+        #corner-counter { top: 20px; right: 20px; color: #fff; }
+        #upload-trigger { top: 20px; left: 20px; cursor: pointer; }
+
+        /* Spezial-Style für Invert */
+        .invert-active {
+            mix-blend-mode: difference;
+        }
+
+        #dvd-label {
+            color: #fff;
+            font-weight: 900;
+            font-size: 5vw;
+        }
+
+        /* Steuerung */
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            display: flex;
+            gap: 15px;
+            background: rgba(44, 44, 46, 0.8);
+            padding: 8px 16px;
+            border-radius: 30px;
+            backdrop-filter: blur(15px);
+            z-index: 100;
+            transition: opacity 0.3s;
+        }
+
+        .btn {
+            background: transparent;
+            border: none;
+            color: #8e8e93;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .btn.active {
+            background: #fff;
+            color: #000;
+        }
+
+        .idle-hide { cursor: none; }
+        #file-input { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="portrait-warning">
+        <p class="text-xl font-bold">Bitte drehe dein Gerät ins Querformat (Landscape)</p>
+    </div>
+
+    <div id="corner-counter">Corner Hits: 0</div>
+    <label id="upload-trigger" for="file-input">Foto wählen</label>
+    <input type="file" id="file-input" accept="image/*">
+
+    <!-- MODUS 1: StandBy -->
+    <div id="standby-widgets" class="widget-container">
+        <div class="widget">
+            <div id="time-widget" class="clock-text">--:--</div>
+            <div class="text-gray-400 text-lg md:text-xl mt-2 font-medium" id="date-widget">--</div>
+        </div>
+        <div class="widget">
+            <div class="flex items-center gap-4">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-yellow-400">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+                </svg>
+                <div class="text-4xl md:text-6xl font-semibold">21°</div>
+            </div>
+            <div class="text-gray-400 text-lg mt-2">Bewölkt</div>
+        </div>
+    </div>
+
+    <!-- MODUS 2: DVD Logo (Benutzt das gleiche Element wie Invert, nur ohne Mix-Mode) -->
+    <div id="dvd-container">
+        <div id="dvd-bouncing-box" class="bouncing-logo">
+             <!-- Das SVG wird nur angezeigt, wenn kein Foto da ist -->
+             <svg id="dvd-logo-svg" viewBox="0 0 512 512">
+                <path d="M256 0C114.6 0 0 114.6 0 256s114.6 256 256 256 256-114.6 256-256S397.4 0 256 0zm0 472c-119.3 0-216-96.7-216-216S136.7 40 256 40s216 96.7 216 216-96.7 216-216 216z"/>
+                <path d="M365.1 180.7l-26.6 63.3-26.6-63.3h-34.9l46 102.3v68.4h31v-68.4l46-102.3h-34.9zm-136.2 0h-57.1v170.7h57.1c37.1 0 63.8-23.7 63.8-85.3 0-61.7-26.7-85.4-63.8-85.4zm0 139.7h-26.1V211.7h26.1c23.2 0 32.8 15.6 32.8 54.3 0 38.8-9.6 54.4-32.8 54.4zM95 180.7h-31v170.7h57.1c37.1 0 63.8-23.7 63.8-85.3s-26.7-85.4-63.8-85.4H95v170.7z"/>
+            </svg>
+            <span id="dvd-label-shared" style="display:none">DVD</span>
+        </div>
+    </div>
+
+    <!-- MODUS 3: Invert Clock -->
+    <div id="invert-mode">
+        <div id="giant-clock-text" class="giant-clock">00:00</div>
+        <!-- Das Invert-Logo wird per JS an die gleiche Position wie das DVD-Logo gesetzt oder wir teilen das Element -->
+    </div>
+
+    <div class="controls" id="ui-controls">
+        <button class="btn active" onclick="setMode('standby')">StandBy</button>
+        <button class="btn" onclick="setMode('dvd')">DVD Logo</button>
+        <button class="btn" onclick="setMode('invert')">Invert Clock</button>
+    </div>
+
+    <script>
+        let currentMode = 'standby';
+        let idleTimer;
+        let cornerHits = 0;
+        let customImageData = null;
+        
+        // Wir nutzen ein Haupt-Objekt für die Animation
+        const anim = { 
+            el: null, 
+            x: Math.random() * 100, 
+            y: Math.random() * 100, 
+            xv: 3, 
+            yv: 3, 
+            w: 0, 
+            h: 0 
+        };
+
+        function updateTime() {
+            const now = new Date();
+            const time = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('time-widget').innerText = time;
+            document.getElementById('giant-clock-text').innerText = time;
+            document.getElementById('date-widget').innerText = now.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        function animate() {
+            if (currentMode === 'dvd' || currentMode === 'invert') {
+                move();
+            }
+            requestAnimationFrame(animate);
+        }
+
+        function move() {
+            anim.x += anim.xv;
+            anim.y += anim.yv;
+
+            let hitX = false, hitY = false;
+
+            if (anim.x + anim.w >= window.innerWidth || anim.x <= 0) {
+                anim.xv *= -1; hitX = true;
+                if (!customImageData) changeColor(document.getElementById('dvd-logo-svg'));
+            }
+            if (anim.y + anim.h >= window.innerHeight || anim.y <= 0) {
+                anim.yv *= -1; hitY = true;
+                if (!customImageData) changeColor(document.getElementById('dvd-logo-svg'));
+            }
+
+            if (hitX && hitY) {
+                cornerHits++;
+                const counter = document.getElementById('corner-counter');
+                counter.innerText = `Corner Hits: ${cornerHits}`;
+                counter.style.transform = 'scale(1.4)';
+                counter.style.color = '#4cd964';
+                setTimeout(() => {
+                    counter.style.transform = 'scale(1)';
+                    counter.style.color = '#fff';
+                }, 300);
+            }
+
+            anim.el.style.left = anim.x + 'px';
+            anim.el.style.top = anim.y + 'px';
+        }
+
+        function changeColor(el) {
+            if (!el) return;
+            const colors = ['#ff3b30', '#ff9500', '#ffcc00', '#4cd964', '#5ac8fa', '#007aff', '#ff2d55'];
+            el.style.fill = colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            
+            // UI Buttons
+            document.querySelectorAll('.btn').forEach(b => {
+                const btnText = b.innerText.toLowerCase();
+                if (mode === 'standby') b.classList.toggle('active', btnText === 'standby');
+                if (mode === 'dvd') b.classList.toggle('active', btnText === 'dvd logo');
+                if (mode === 'invert') b.classList.toggle('active', btnText === 'invert clock');
+            });
+            
+            // Container Visibility
+            document.getElementById('standby-widgets').style.display = (mode === 'standby') ? 'flex' : 'none';
+            document.getElementById('dvd-container').style.display = (mode === 'standby') ? 'none' : 'block';
+            document.getElementById('invert-mode').style.display = (mode === 'invert') ? 'block' : 'none';
+            
+            // UI Overlay
+            const isPlaying = (mode === 'dvd' || mode === 'invert');
+            document.getElementById('corner-counter').style.display = isPlaying ? 'block' : 'none';
+            document.getElementById('upload-trigger').style.display = (mode === 'invert' || mode === 'dvd') ? 'block' : 'none';
+
+            // Invert Effekt umschalten
+            anim.el.classList.toggle('invert-active', mode === 'invert');
+            
+            // Wenn Foto da ist, Filter anwenden für Invert-Modus
+            if (customImageData) {
+                anim.el.style.filter = (mode === 'invert') ? "brightness(0) invert(1)" : "none";
+            } else {
+                anim.el.style.filter = "none";
+            }
+
+            updateSizes();
+        }
+
+        function updateSizes() {
+            anim.w = anim.el.offsetWidth;
+            anim.h = anim.el.offsetHeight;
+        }
+
+        document.getElementById('file-input').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    customImageData = event.target.result;
+                    const box = document.getElementById('dvd-bouncing-box');
+                    const svg = document.getElementById('dvd-logo-svg');
+                    const label = document.getElementById('dvd-label-shared');
+                    
+                    box.style.backgroundImage = `url(${customImageData})`;
+                    if(svg) svg.style.display = 'none';
+                    if(label) label.style.display = 'none';
+                    
+                    // Filter setzen basierend auf Modus
+                    box.style.filter = (currentMode === 'invert') ? "brightness(0) invert(1)" : "none";
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function resetIdle() {
+            const elements = ['ui-controls', 'upload-trigger', 'corner-counter'];
+            document.body.classList.remove('idle-hide');
+            elements.forEach(id => { 
+                const el = document.getElementById(id);
+                if(el) el.style.opacity = "1"; 
+            });
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+                document.body.classList.add('idle-hide');
+                elements.forEach(id => { 
+                    const el = document.getElementById(id);
+                    if(el) el.style.opacity = "0"; 
+                });
+            }, 3000);
+        }
+
+        window.onload = () => {
+            anim.el = document.getElementById('dvd-bouncing-box');
+            updateSizes();
+            animate();
+            window.addEventListener('mousemove', resetIdle);
+            window.addEventListener('touchstart', resetIdle);
+            window.addEventListener('resize', updateSizes);
+            resetIdle();
+        };
+    </script>
+</body>
+</html>
+
+
